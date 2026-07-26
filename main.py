@@ -16,6 +16,12 @@ load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
 OWNER_ID = int(os.getenv('OWNER_ID', 0))
 LOG_CHANNEL_ID = int(os.getenv('LOG_CHANNEL_ID', 0))
+PUNISHMENT_CHANNEL_ID = 1529248455157874879  # канал для кратких уведомлений
+
+if not TOKEN or TOKEN.strip() == '':
+    print("❌ Ошибка: токен не задан или пуст. Проверьте .env файл.")
+    sys.exit(1)
+TOKEN = TOKEN.strip()
 
 if not all([TOKEN, OWNER_ID, LOG_CHANNEL_ID]):
     print("❌ Ошибка: не заданы все переменные окружения.")
@@ -42,14 +48,11 @@ intents.message_content = True
 intents.members = True
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-# Глобальные переменные
-MOD_ROLE_ID = 0  # будет установлено через команду /set_mod_role
-mod_role_set = False
-active_timers = {}  # user_id -> asyncio.Task
+MOD_ROLE_ID = 0
+active_timers = {}
 
 # ---------- Вспомогательные функции ----------
 def is_mod_or_owner(interaction: discord.Interaction) -> bool:
-    """Проверяет, является ли пользователь модератором или владельцем."""
     if interaction.user.id == OWNER_ID:
         return True
     if MOD_ROLE_ID == 0:
@@ -60,7 +63,6 @@ def is_mod_or_owner(interaction: discord.Interaction) -> bool:
     return False
 
 def parse_duration(duration_str: str) -> int:
-    """Парсит строку длительности вида '1d2h30m' и возвращает количество секунд."""
     pattern = re.compile(r'(\d+)([dhms])')
     matches = pattern.findall(duration_str.lower())
     if not matches:
@@ -78,8 +80,23 @@ def parse_duration(duration_str: str) -> int:
             total_seconds += value
     return total_seconds
 
+async def send_punishment_notification(action: str, target: discord.Member, moderator: discord.Member, reason: str = None, duration: str = None):
+    """Отправляет короткое уведомление в канал наказаний."""
+    channel = bot.get_channel(PUNISHMENT_CHANNEL_ID)
+    if not channel:
+        return
+    msg = f"**{action}** | {target.mention} | {moderator.mention}"
+    if reason:
+        msg += f" | Причина: {reason}"
+    if duration:
+        msg += f" | Длительность: {duration}"
+    try:
+        await channel.send(msg)
+    except Exception as e:
+        print(f"Ошибка отправки уведомления в канал наказаний: {e}")
+
 async def log_action(interaction: discord.Interaction, action: str, target: discord.Member = None, reason: str = None, extra: str = None):
-    """Отправляет лог в указанный канал."""
+    """Отправляет подробный лог в основной лог-канал."""
     channel = bot.get_channel(LOG_CHANNEL_ID)
     if not channel:
         return
@@ -106,7 +123,6 @@ class ModerationCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    # ---------- Команда для установки роли модератора (только владелец) ----------
     @app_commands.command(name="set_mod_role", description="Установить роль модератора (только владелец)")
     @app_commands.default_permissions(administrator=True)
     async def set_mod_role(self, interaction: discord.Interaction, role: discord.Role):
@@ -118,7 +134,6 @@ class ModerationCog(commands.Cog):
         await interaction.response.send_message(f"✅ Роль модератора установлена: {role.mention}", ephemeral=True)
         await log_action(interaction, "Назначена роль модератора", extra=f"Роль: {role.name} (ID: {role.id})")
 
-    # ---------- Команда для выдачи роли модератора (только владелец) ----------
     @app_commands.command(name="add_mod", description="Выдать роль модератора пользователю (только владелец)")
     @app_commands.default_permissions(administrator=True)
     async def add_mod(self, interaction: discord.Interaction, member: discord.Member):
@@ -139,14 +154,12 @@ class ModerationCog(commands.Cog):
         except Exception as e:
             await interaction.response.send_message(f"❌ Ошибка: {e}", ephemeral=True)
 
-    # ---------- Проверка прав ----------
     async def cog_check(self, interaction: discord.Interaction) -> bool:
         if not is_mod_or_owner(interaction):
             await interaction.response.send_message("⛔ У вас нет прав на использование этой команды.", ephemeral=True)
             return False
         return True
 
-    # ---------- Команда /ban ----------
     @app_commands.command(name="ban", description="Забанить пользователя")
     @app_commands.describe(member="Пользователь", reason="Причина", delete_days="Удалить сообщения за N дней (0-7)")
     async def ban(self, interaction: discord.Interaction, member: discord.Member, reason: str = "Не указана", delete_days: int = 0):
@@ -158,10 +171,10 @@ class ModerationCog(commands.Cog):
             await member.ban(reason=f"{interaction.user}: {reason}", delete_message_days=delete_days)
             await interaction.followup.send(f"✅ Пользователь {member.mention} забанен.", ephemeral=True)
             await log_action(interaction, "Бан", target=member, reason=reason, extra=f"Удалено сообщений за {delete_days} дн.")
+            await send_punishment_notification("Бан", member, interaction.user, reason)
         except Exception as e:
             await interaction.followup.send(f"❌ Ошибка: {e}", ephemeral=True)
 
-    # ---------- Команда /tempban ----------
     @app_commands.command(name="tempban", description="Временно забанить пользователя")
     @app_commands.describe(member="Пользователь", duration="Длительность (например: 1d, 2h, 30m)", reason="Причина")
     async def tempban(self, interaction: discord.Interaction, member: discord.Member, duration: str, reason: str = "Не указана"):
@@ -177,8 +190,7 @@ class ModerationCog(commands.Cog):
             await member.ban(reason=f"{interaction.user}: {reason} (временный на {duration})")
             await interaction.followup.send(f"✅ Пользователь {member.mention} забанен на {duration}.", ephemeral=True)
             await log_action(interaction, "Временный бан", target=member, reason=reason, extra=f"Длительность: {duration}")
-
-            # Создаём таймер для разбана
+            await send_punishment_notification("Временный бан", member, interaction.user, reason, duration)
             async def unban_after():
                 await asyncio.sleep(seconds)
                 try:
@@ -190,7 +202,6 @@ class ModerationCog(commands.Cog):
         except Exception as e:
             await interaction.followup.send(f"❌ Ошибка: {e}", ephemeral=True)
 
-    # ---------- Команда /kick ----------
     @app_commands.command(name="kick", description="Кикнуть пользователя")
     @app_commands.describe(member="Пользователь", reason="Причина")
     async def kick(self, interaction: discord.Interaction, member: discord.Member, reason: str = "Не указана"):
@@ -202,17 +213,17 @@ class ModerationCog(commands.Cog):
             await member.kick(reason=f"{interaction.user}: {reason}")
             await interaction.followup.send(f"✅ Пользователь {member.mention} кикнут.", ephemeral=True)
             await log_action(interaction, "Кик", target=member, reason=reason)
+            await send_punishment_notification("Кик", member, interaction.user, reason)
         except Exception as e:
             await interaction.followup.send(f"❌ Ошибка: {e}", ephemeral=True)
 
-    # ---------- Команда /mute (таймаут) ----------
     @app_commands.command(name="mute", description="Замутить пользователя (таймаут)")
-    @app_commands.describe(member="Пользователь", reason="Причина", duration="Длительность (в минутах)")
+    @app_commands.describe(member="Пользователь", duration="Длительность (в минутах)", reason="Причина")
     async def mute(self, interaction: discord.Interaction, member: discord.Member, duration: int = 60, reason: str = "Не указана"):
         if member.top_role >= interaction.user.top_role:
             await interaction.response.send_message("❌ Вы не можете замутить этого пользователя.", ephemeral=True)
             return
-        if duration > 40320:  # макс 28 дней
+        if duration > 40320:
             await interaction.response.send_message("❌ Максимальная длительность мута — 40320 минут (28 дней).", ephemeral=True)
             return
         await interaction.response.defer(ephemeral=True)
@@ -220,18 +231,18 @@ class ModerationCog(commands.Cog):
             await member.timeout(timedelta(minutes=duration), reason=f"{interaction.user}: {reason}")
             await interaction.followup.send(f"✅ Пользователь {member.mention} замучен на {duration} минут.", ephemeral=True)
             await log_action(interaction, "Мут", target=member, reason=reason, extra=f"Длительность: {duration} мин.")
+            await send_punishment_notification("Мут", member, interaction.user, reason, f"{duration} мин.")
         except Exception as e:
             await interaction.followup.send(f"❌ Ошибка: {e}", ephemeral=True)
 
-    # ---------- Команда /tempmute (альяс для /mute) ----------
     @app_commands.command(name="tempmute", description="Замутить пользователя на время (таймаут)")
-    @app_commands.describe(member="Пользователь", duration="Длительность (например: 1h, 30m)", reason="Причина")
+    @app_commands.describe(member="Пользователь", duration="Длительность (например: 1d, 2h, 30m)", reason="Причина")
     async def tempmute(self, interaction: discord.Interaction, member: discord.Member, duration: str, reason: str = "Не указана"):
         seconds = parse_duration(duration)
         if seconds <= 0:
             await interaction.response.send_message("❌ Неверный формат длительности. Используйте: 1d, 2h, 30m и т.д.", ephemeral=True)
             return
-        if seconds > 40320*60:  # макс 28 дней
+        if seconds > 40320*60:
             await interaction.response.send_message("❌ Максимальная длительность — 28 дней.", ephemeral=True)
             return
         if member.top_role >= interaction.user.top_role:
@@ -242,10 +253,10 @@ class ModerationCog(commands.Cog):
             await member.timeout(timedelta(seconds=seconds), reason=f"{interaction.user}: {reason}")
             await interaction.followup.send(f"✅ Пользователь {member.mention} замучен на {duration}.", ephemeral=True)
             await log_action(interaction, "Временный мут", target=member, reason=reason, extra=f"Длительность: {duration}")
+            await send_punishment_notification("Временный мут", member, interaction.user, reason, duration)
         except Exception as e:
             await interaction.followup.send(f"❌ Ошибка: {e}", ephemeral=True)
 
-    # ---------- Команда /unmute ----------
     @app_commands.command(name="unmute", description="Снять мут с пользователя")
     @app_commands.describe(member="Пользователь")
     async def unmute(self, interaction: discord.Interaction, member: discord.Member):
@@ -260,7 +271,6 @@ class ModerationCog(commands.Cog):
         except Exception as e:
             await interaction.followup.send(f"❌ Ошибка: {e}", ephemeral=True)
 
-    # ---------- Команда /clear ----------
     @app_commands.command(name="clear", description="Удалить сообщения в канале (до 100)")
     @app_commands.describe(amount="Количество сообщений (1-100)")
     async def clear(self, interaction: discord.Interaction, amount: int = 10):
@@ -275,7 +285,6 @@ class ModerationCog(commands.Cog):
         except Exception as e:
             await interaction.followup.send(f"❌ Ошибка: {e}", ephemeral=True)
 
-    # ---------- Команда /warn ----------
     @app_commands.command(name="warn", description="Выдать предупреждение пользователю")
     @app_commands.describe(member="Пользователь", reason="Причина")
     async def warn(self, interaction: discord.Interaction, member: discord.Member, reason: str = "Не указана"):
@@ -294,8 +303,8 @@ class ModerationCog(commands.Cog):
         save_warnings(warnings)
         await interaction.response.send_message(f"✅ {member.mention} получил предупреждение. Всего предупреждений: {len(warnings[user_id])}", ephemeral=True)
         await log_action(interaction, "Предупреждение", target=member, reason=reason)
+        await send_punishment_notification("Предупреждение", member, interaction.user, reason)
 
-    # ---------- Команда /warnings ----------
     @app_commands.command(name="warnings", description="Показать предупреждения пользователя")
     @app_commands.describe(member="Пользователь")
     async def warnings(self, interaction: discord.Interaction, member: discord.Member):
@@ -315,7 +324,6 @@ class ModerationCog(commands.Cog):
             )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    # ---------- Команда /clearwarns ----------
     @app_commands.command(name="clearwarns", description="Очистить все предупреждения пользователя")
     @app_commands.describe(member="Пользователь")
     async def clearwarns(self, interaction: discord.Interaction, member: discord.Member):
@@ -332,7 +340,6 @@ class ModerationCog(commands.Cog):
         else:
             await interaction.response.send_message(f"У {member.mention} нет предупреждений.", ephemeral=True)
 
-    # ---------- Команда /unban ----------
     @app_commands.command(name="unban", description="Разбанить пользователя по ID")
     @app_commands.describe(user_id="ID пользователя", reason="Причина")
     async def unban(self, interaction: discord.Interaction, user_id: str, reason: str = "Не указана"):
@@ -345,7 +352,7 @@ class ModerationCog(commands.Cog):
         except Exception as e:
             await interaction.followup.send(f"❌ Ошибка: {e}", ephemeral=True)
 
-# ---------- Веб-сервер для health check ----------
+# ---------- Веб-сервер ----------
 async def health_check(request):
     return web.Response(text="OK", status=200)
 
@@ -359,7 +366,6 @@ async def start_web():
     print("🌐 Health check на порту 8080")
     await asyncio.Event().wait()
 
-# ---------- Событие готовности ----------
 @bot.event
 async def on_ready():
     print(f'✅ Бот {bot.user} запущен!')
@@ -369,7 +375,6 @@ async def on_ready():
     except Exception as e:
         print(f"⚠️ Ошибка синхронизации: {e}")
 
-# ---------- Запуск ----------
 async def main():
     await bot.add_cog(ModerationCog(bot))
     asyncio.create_task(start_web())
