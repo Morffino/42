@@ -16,8 +16,10 @@ load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
 OWNER_ID = int(os.getenv('OWNER_ID', 0))
 LOG_CHANNEL_ID = int(os.getenv('LOG_CHANNEL_ID', 0))
-PUNISHMENT_CHANNEL_ID = 1529248455157874879
-GUILD_ID = int(os.getenv('GUILD_ID', 0))  # ID вашего сервера для быстрой синхронизации
+PUNISHMENT_CHANNEL_ID = 1529248455157874879  # канал для кратких уведомлений
+
+# --- ID вашего сервера (жестко задан) ---
+GUILD_ID = 1528337219612311633
 
 if not TOKEN or TOKEN.strip() == '':
     print("❌ Ошибка: токен не задан или пуст. Проверьте .env файл.")
@@ -130,13 +132,9 @@ class ModerationCog(commands.Cog):
             return
         await interaction.response.defer(ephemeral=True)
         try:
-            if GUILD_ID:
-                guild = discord.Object(id=GUILD_ID)
-                synced = await self.bot.tree.sync(guild=guild)
-                await interaction.followup.send(f"✅ Синхронизировано {len(synced)} команд для сервера.", ephemeral=True)
-            else:
-                synced = await self.bot.tree.sync()
-                await interaction.followup.send(f"✅ Синхронизировано {len(synced)} глобальных команд.", ephemeral=True)
+            guild = discord.Object(id=GUILD_ID)
+            synced = await self.bot.tree.sync(guild=guild)
+            await interaction.followup.send(f"✅ Синхронизировано {len(synced)} команд для сервера.", ephemeral=True)
         except Exception as e:
             await interaction.followup.send(f"❌ Ошибка синхронизации: {e}", ephemeral=True)
 
@@ -386,15 +384,11 @@ async def start_web():
 @bot.event
 async def on_ready():
     print(f'✅ Бот {bot.user} запущен!')
-    # Синхронизация на конкретный сервер, если GUILD_ID задан
+    # Синхронизация на ваш сервер (жестко заданный GUILD_ID)
     try:
-        if GUILD_ID:
-            guild = discord.Object(id=GUILD_ID)
-            synced = await bot.tree.sync(guild=guild)
-            print(f"🔄 Синхронизировано {len(synced)} команд для сервера {GUILD_ID}")
-        else:
-            synced = await bot.tree.sync()
-            print(f"🔄 Синхронизировано {len(synced)} глобальных команд")
+        guild = discord.Object(id=GUILD_ID)
+        synced = await bot.tree.sync(guild=guild)
+        print(f"🔄 Синхронизировано {len(synced)} команд для сервера {GUILD_ID}")
     except Exception as e:
         print(f"⚠️ Ошибка синхронизации: {e}")
 
