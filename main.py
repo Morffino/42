@@ -48,63 +48,43 @@ LIMITED_ROLES = [1529253952850366616, 1529254103820275823]
 LIMITED_COMMANDS = ["tempmute","unmute","warn","clearwarns"]
 
 # ---- Защита от спама наказаниями ----
-mod_actions = {}  # user_id -> list of timestamps
+mod_actions = {}
 mod_lock = asyncio.Lock()
 
-async def check_mod_rate(interaction: discord.Interaction) -> bool:
-    """Проверяет, не превысил ли модератор лимит наказаний (5 за минуту). Если превысил – выдаёт тайм-аут на 10 часов."""
-    now = time.time()
-    uid = interaction.user.id
+async def check_mod_rate(i):
+    now=time.time()
+    uid=i.user.id
     async with mod_lock:
-        if uid not in mod_actions:
-            mod_actions[uid] = []
-        mod_actions[uid] = [t for t in mod_actions[uid] if now - t < 60]  # удаляем старше минуты
-        if len(mod_actions[uid]) >= 5:
-            # выдаём тайм-аут модератору на 10 часов
+        if uid not in mod_actions: mod_actions[uid]=[]
+        mod_actions[uid]=[t for t in mod_actions[uid] if now-t<60]
+        if len(mod_actions[uid])>=5:
             try:
-                await interaction.user.timeout(timedelta(hours=10), reason="Превышение лимита наказаний (5 за минуту)")
-                await interaction.followup.send("⚠️ Вы превысили лимит наказаний (5 за минуту). Вы получили тайм-аут на 10 часов.", ephemeral=True)
-                # логируем
-                ch = b.get_channel(L)
+                await i.user.timeout(timedelta(hours=10), reason="Превышение лимита наказаний (5 за минуту)")
+                await i.followup.send("⚠️ Вы превысили лимит наказаний (5 за минуту). Тайм-аут 10 часов.", ephemeral=True)
+                ch=b.get_channel(L)
                 if ch:
-                    embed = discord.Embed(title="⛔ Автоматический тайм-аут модератора", color=discord.Color.red())
-                    embed.add_field(name="Модератор", value=interaction.user.mention)
-                    embed.add_field(name="Причина", value="Превышение лимита наказаний (5 за минуту)")
-                    embed.add_field(name="Длительность", value="10 часов")
-                    await ch.send(embed=embed)
-            except Exception as e:
-                eL(e)
-            return False  # не даём выполнять команду (но мы уже записали тайм-аут)
-        # добавляем текущее действие
+                    e=discord.Embed(title="⛔ Авто-тайм-аут модератора", color=discord.Color.red())
+                    e.add_field(name="Модератор", value=i.user.mention)
+                    e.add_field(name="Причина", value="5 наказаний за минуту")
+                    e.add_field(name="Длительность", value="10 часов")
+                    await ch.send(embed=e)
+            except Exception as e: eL(e)
+            return False
         mod_actions[uid].append(now)
         return True
 
-# ---- Вспомогательные функции ----
 def imo(i):
-    """Проверка прав: владелец или роль полного доступа."""
-    if i.user.id == O:
-        return True
-    # Проверяем роли полного доступа
+    if i.user.id==O: return True
     for rid in FULL_ACCESS_ROLES:
-        r = i.guild.get_role(rid)
-        if r and r in i.user.roles:
-            return True
+        r=i.guild.get_role(rid)
+        if r and r in i.user.roles: return True
     return False
 
 def imo_limited(i):
-    """Проверка прав для ограниченных команд: владелец, полный доступ или ограниченный доступ."""
-    if i.user.id == O:
-        return True
-    # Полный доступ
-    for rid in FULL_ACCESS_ROLES:
-        r = i.guild.get_role(rid)
-        if r and r in i.user.roles:
-            return True
-    # Ограниченный доступ
-    for rid in LIMITED_ROLES:
-        r = i.guild.get_role(rid)
-        if r and r in i.user.roles:
-            return True
+    if i.user.id==O: return True
+    for rid in FULL_ACCESS_ROLES+LIMITED_ROLES:
+        r=i.guild.get_role(rid)
+        if r and r in i.user.roles: return True
     return False
 
 def pd(ds):
@@ -141,45 +121,40 @@ async def la(i,a,target=None,reason=None,extra=None):
     try: await ch.send(embed=e)
     except: pass
 
-# ---- Cog ----
+# ---- COG ----
 class MC(commands.Cog):
     def __init__(self, b): self.b=b
 
-    # ---- Глобальная проверка прав для всех команд ----
     async def cog_check(self, i):
-        # Проверка blacklist
         if str(i.user.id) in lb():
             await i.response.send_message("⛔",ephemeral=True); return False
-        # Проверка ролей в зависимости от команды
         cmd_name = i.command.name if i.command else ""
         if cmd_name in LIMITED_COMMANDS:
             if not imo_limited(i):
-                await i.response.send_message("⛔ У вас нет прав на эту команду.",ephemeral=True); return False
+                await i.response.send_message("⛔ У вас нет прав.",ephemeral=True); return False
         else:
             if not imo(i):
-                await i.response.send_message("⛔ У вас нет прав на эту команду.",ephemeral=True); return False
+                await i.response.send_message("⛔ У вас нет прав.",ephemeral=True); return False
         return True
 
-    # ---- Команды модерации (с защитой от спама наказаний) ----
+    # ---- Команды с default_permissions(manage_messages=True) ----
     @app_commands.command(name="ban")
-    @app_commands.describe(member="Пользователь",reason="Причина",delete_days="Удалить сообщения за N дней (0-7)")
+    @app_commands.default_permissions(manage_messages=True)
+    @app_commands.describe(member="Пользователь",reason="Причина",delete_days="Удалить за N дней (0-7)")
     async def bn(self,i,member:discord.Member,reason:str="Не указана",delete_days:int=0):
         if member.top_role>=i.user.top_role:
             await i.response.send_message("❌",ephemeral=True); return
-        # Проверка лимита наказаний
-        if not await check_mod_rate(i):
-            # уже выдали тайм-аут, но команду не выполняем
-            return
+        if not await check_mod_rate(i): return
         await i.response.defer(ephemeral=True)
         try:
             await member.ban(reason=f"{i.user}: {reason}",delete_message_days=delete_days)
             await i.followup.send(f"✅ {member.mention} забанен.",ephemeral=True)
             await la(i,"Бан",target=member,reason=reason,extra=f"Удалено за {delete_days} дн.")
             await spn("Бан",member,i.user,reason)
-        except Exception as e:
-            await i.followup.send(f"❌ {e}",ephemeral=True); eL(e)
+        except Exception as e: await i.followup.send(f"❌ {e}",ephemeral=True); eL(e)
 
     @app_commands.command(name="tempban")
+    @app_commands.default_permissions(manage_messages=True)
     @app_commands.describe(member="Пользователь",duration="1d,2h,30m",reason="Причина")
     async def tb(self,i,member:discord.Member,duration:str,reason:str="Не указана"):
         if member.top_role>=i.user.top_role:
@@ -187,8 +162,7 @@ class MC(commands.Cog):
         s=pd(duration)
         if s<=0:
             await i.response.send_message("❌",ephemeral=True); return
-        if not await check_mod_rate(i):
-            return
+        if not await check_mod_rate(i): return
         await i.response.defer(ephemeral=True)
         try:
             await member.ban(reason=f"{i.user}: {reason} (на {duration})")
@@ -200,44 +174,42 @@ class MC(commands.Cog):
                 try: await member.unban(reason="Авторазбан")
                 except: pass
             asyncio.create_task(_())
-        except Exception as e:
-            await i.followup.send(f"❌ {e}",ephemeral=True); eL(e)
+        except Exception as e: await i.followup.send(f"❌ {e}",ephemeral=True); eL(e)
 
     @app_commands.command(name="kick")
+    @app_commands.default_permissions(manage_messages=True)
     @app_commands.describe(member="Пользователь",reason="Причина")
     async def k(self,i,member:discord.Member,reason:str="Не указана"):
         if member.top_role>=i.user.top_role:
             await i.response.send_message("❌",ephemeral=True); return
-        if not await check_mod_rate(i):
-            return
+        if not await check_mod_rate(i): return
         await i.response.defer(ephemeral=True)
         try:
             await member.kick(reason=f"{i.user}: {reason}")
             await i.followup.send(f"✅ {member.mention} кикнут.",ephemeral=True)
             await la(i,"Кик",target=member,reason=reason)
             await spn("Кик",member,i.user,reason)
-        except Exception as e:
-            await i.followup.send(f"❌ {e}",ephemeral=True); eL(e)
+        except Exception as e: await i.followup.send(f"❌ {e}",ephemeral=True); eL(e)
 
     @app_commands.command(name="mute")
+    @app_commands.default_permissions(manage_messages=True)
     @app_commands.describe(member="Пользователь",duration="Минуты",reason="Причина")
     async def m(self,i,member:discord.Member,duration:int=60,reason:str="Не указана"):
         if member.top_role>=i.user.top_role:
             await i.response.send_message("❌",ephemeral=True); return
         if duration>40320:
             await i.response.send_message("❌",ephemeral=True); return
-        if not await check_mod_rate(i):
-            return
+        if not await check_mod_rate(i): return
         await i.response.defer(ephemeral=True)
         try:
             await member.timeout(timedelta(minutes=duration),reason=f"{i.user}: {reason}")
             await i.followup.send(f"✅ {member.mention} на {duration} мин.",ephemeral=True)
             await la(i,"Мут",target=member,reason=reason,extra=f"{duration} мин.")
             await spn("Мут",member,i.user,reason,f"{duration} мин.")
-        except Exception as e:
-            await i.followup.send(f"❌ {e}",ephemeral=True); eL(e)
+        except Exception as e: await i.followup.send(f"❌ {e}",ephemeral=True); eL(e)
 
     @app_commands.command(name="tempmute")
+    @app_commands.default_permissions(manage_messages=True)
     @app_commands.describe(member="Пользователь",duration="1d,2h,30m",reason="Причина")
     async def tm(self,i,member:discord.Member,duration:str,reason:str="Не указана"):
         s=pd(duration)
@@ -247,52 +219,48 @@ class MC(commands.Cog):
             await i.response.send_message("❌",ephemeral=True); return
         if member.top_role>=i.user.top_role:
             await i.response.send_message("❌",ephemeral=True); return
-        if not await check_mod_rate(i):
-            return
+        if not await check_mod_rate(i): return
         await i.response.defer(ephemeral=True)
         try:
             await member.timeout(timedelta(seconds=s),reason=f"{i.user}: {reason}")
             await i.followup.send(f"✅ {member.mention} на {duration}",ephemeral=True)
             await la(i,"Временный мут",target=member,reason=reason,extra=f"Длительность: {duration}")
             await spn("Временный мут",member,i.user,reason,duration)
-        except Exception as e:
-            await i.followup.send(f"❌ {e}",ephemeral=True); eL(e)
+        except Exception as e: await i.followup.send(f"❌ {e}",ephemeral=True); eL(e)
 
     @app_commands.command(name="unmute")
+    @app_commands.default_permissions(manage_messages=True)
     @app_commands.describe(member="Пользователь")
     async def um(self,i,member:discord.Member):
         if member.top_role>=i.user.top_role:
             await i.response.send_message("❌",ephemeral=True); return
-        # unmute не считается наказанием, поэтому не добавляем в счётчик
         await i.response.defer(ephemeral=True)
         try:
             await member.timeout(None)
             await i.followup.send(f"✅ Мут снят с {member.mention}.",ephemeral=True)
             await la(i,"Снятие мута",target=member)
-        except Exception as e:
-            await i.followup.send(f"❌ {e}",ephemeral=True); eL(e)
+        except Exception as e: await i.followup.send(f"❌ {e}",ephemeral=True); eL(e)
 
     @app_commands.command(name="clear")
+    @app_commands.default_permissions(manage_messages=True)
     @app_commands.describe(amount="1-100")
     async def cl(self,i,amount:int=10):
         if amount<1 or amount>100:
             await i.response.send_message("❌",ephemeral=True); return
-        # clear не считается наказанием
         await i.response.defer(ephemeral=True)
         try:
             d=await i.channel.purge(limit=amount)
-            await i.followup.send(f"✅ Удалено {len(d)} сообщений.",ephemeral=True)
+            await i.followup.send(f"✅ Удалено {len(d)}.",ephemeral=True)
             await la(i,"Очистка чата",extra=f"Удалено {len(d)}")
-        except Exception as e:
-            await i.followup.send(f"❌ {e}",ephemeral=True); eL(e)
+        except Exception as e: await i.followup.send(f"❌ {e}",ephemeral=True); eL(e)
 
     @app_commands.command(name="warn")
+    @app_commands.default_permissions(manage_messages=True)
     @app_commands.describe(member="Пользователь",reason="Причина")
     async def w(self,i,member:discord.Member,reason:str="Не указана"):
         if member.top_role>=i.user.top_role:
             await i.response.send_message("❌",ephemeral=True); return
-        if not await check_mod_rate(i):
-            return
+        if not await check_mod_rate(i): return
         await i.response.defer(ephemeral=True)
         w=lw()
         uid=str(member.id)
@@ -304,6 +272,7 @@ class MC(commands.Cog):
         await spn("Предупреждение",member,i.user,reason)
 
     @app_commands.command(name="warnings")
+    @app_commands.default_permissions(manage_messages=True)
     @app_commands.describe(member="Пользователь")
     async def ws(self,i,member:discord.Member):
         w=lw()
@@ -319,6 +288,7 @@ class MC(commands.Cog):
         await i.followup.send(embed=e,ephemeral=True)
 
     @app_commands.command(name="clearwarns")
+    @app_commands.default_permissions(manage_messages=True)
     @app_commands.describe(member="Пользователь")
     async def cw(self,i,member:discord.Member):
         if member.top_role>=i.user.top_role:
@@ -334,6 +304,7 @@ class MC(commands.Cog):
             await i.followup.send(f"У {member.mention} нет предупреждений.",ephemeral=True)
 
     @app_commands.command(name="unban")
+    @app_commands.default_permissions(manage_messages=True)
     @app_commands.describe(user_id="ID пользователя",reason="Причина")
     async def ub(self,i,user_id:str,reason:str="Не указана"):
         await i.response.defer(ephemeral=True)
@@ -342,13 +313,13 @@ class MC(commands.Cog):
             await i.guild.unban(u,reason=f"{i.user}: {reason}")
             await i.followup.send(f"✅ Пользователь {user_id} разбанен.",ephemeral=True)
             await la(i,"Разбан",extra=f"ID: {user_id}")
-        except Exception as e:
-            await i.followup.send(f"❌ {e}",ephemeral=True); eL(e)
+        except Exception as e: await i.followup.send(f"❌ {e}",ephemeral=True); eL(e)
 
     @app_commands.command(name="blacklist")
+    @app_commands.default_permissions(manage_messages=True)
+    @app_commands.describe(user="Пользователь", action="add или remove")
     async def bl(self,i,user:discord.User,action:str):
-        # Эту команду оставляем только для владельца
-        if i.user.id != O:
+        if i.user.id!=O:
             await i.response.send_message("❌ Только владелец.",ephemeral=True); return
         await i.response.defer(ephemeral=True)
         bl=lb()
