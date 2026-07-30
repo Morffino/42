@@ -16,7 +16,8 @@ load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
 OWNER_ID = int(os.getenv('OWNER_ID', 0))
 LOG_CHANNEL_ID = int(os.getenv('LOG_CHANNEL_ID', 0))
-PUNISHMENT_CHANNEL_ID = 1529248455157874879  # канал для кратких уведомлений
+PUNISHMENT_CHANNEL_ID = 1529248455157874879
+GUILD_ID = int(os.getenv('GUILD_ID', 0))  # ID вашего сервера для быстрой синхронизации
 
 if not TOKEN or TOKEN.strip() == '':
     print("❌ Ошибка: токен не задан или пуст. Проверьте .env файл.")
@@ -81,7 +82,6 @@ def parse_duration(duration_str: str) -> int:
     return total_seconds
 
 async def send_punishment_notification(action: str, target: discord.Member, moderator: discord.Member, reason: str = None, duration: str = None):
-    """Отправляет короткое уведомление в канал наказаний."""
     channel = bot.get_channel(PUNISHMENT_CHANNEL_ID)
     if not channel:
         return
@@ -96,7 +96,6 @@ async def send_punishment_notification(action: str, target: discord.Member, mode
         print(f"Ошибка отправки уведомления в канал наказаний: {e}")
 
 async def log_action(interaction: discord.Interaction, action: str, target: discord.Member = None, reason: str = None, extra: str = None):
-    """Отправляет подробный лог в основной лог-канал."""
     channel = bot.get_channel(LOG_CHANNEL_ID)
     if not channel:
         return
@@ -122,6 +121,24 @@ async def log_action(interaction: discord.Interaction, action: str, target: disc
 class ModerationCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+
+    # ---------- Команда для синхронизации (только владелец) ----------
+    @app_commands.command(name="sync", description="Принудительно синхронизировать команды (только владелец)")
+    async def sync_commands(self, interaction: discord.Interaction):
+        if interaction.user.id != OWNER_ID:
+            await interaction.response.send_message("❌ Только владелец бота может использовать эту команду.", ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True)
+        try:
+            if GUILD_ID:
+                guild = discord.Object(id=GUILD_ID)
+                synced = await self.bot.tree.sync(guild=guild)
+                await interaction.followup.send(f"✅ Синхронизировано {len(synced)} команд для сервера.", ephemeral=True)
+            else:
+                synced = await self.bot.tree.sync()
+                await interaction.followup.send(f"✅ Синхронизировано {len(synced)} глобальных команд.", ephemeral=True)
+        except Exception as e:
+            await interaction.followup.send(f"❌ Ошибка синхронизации: {e}", ephemeral=True)
 
     @app_commands.command(name="set_mod_role", description="Установить роль модератора (только владелец)")
     @app_commands.default_permissions(administrator=True)
@@ -369,9 +386,15 @@ async def start_web():
 @bot.event
 async def on_ready():
     print(f'✅ Бот {bot.user} запущен!')
+    # Синхронизация на конкретный сервер, если GUILD_ID задан
     try:
-        synced = await bot.tree.sync()
-        print(f"🔄 Синхронизировано {len(synced)} команд.")
+        if GUILD_ID:
+            guild = discord.Object(id=GUILD_ID)
+            synced = await bot.tree.sync(guild=guild)
+            print(f"🔄 Синхронизировано {len(synced)} команд для сервера {GUILD_ID}")
+        else:
+            synced = await bot.tree.sync()
+            print(f"🔄 Синхронизировано {len(synced)} глобальных команд")
     except Exception as e:
         print(f"⚠️ Ошибка синхронизации: {e}")
 
