@@ -1,0 +1,55 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+
+# ---- Виртуальное окружение ----
+venv/
+env/
+ENV/
+.venv
+
+# ---- Файлы окружения (секреты) ----
+.env
+.env.local
+.env.*.local
+
+# ---- Директории с данными и логами ----
+data/
+logs/
+logs_applications/
+
+# ---- IDE и редакторы ----
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ---- Логи ----
+*.log
+
+# ---- Базы данных ----
+*.db
+*.sqlite3
+
+# ---- Docker ----
+docker-compose.override.yml
+Dockerfile.cache
+
+# ---- Временные файлы ----
+*.tmp
+*.temp
+*.pid
+*.sock
+
+# ---- Файлы сборки и тестов ----
+.pytest_cache/
+.coverage
+htmlcov/
