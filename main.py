@@ -79,13 +79,10 @@ async def check_mod_rate(i):
 BANNED_USER_ID = 689818377803399219
 
 def has_allowed_role(i):
-    # Запрещаем конкретному пользователю
     if i.user.id == BANNED_USER_ID:
         return False
-    # Владелец всегда имеет доступ
     if i.user.id == O:
         return True
-    # Проверяем роли
     for role_id in ALLOWED_ROLES:
         role = i.guild.get_role(role_id)
         if role and role in i.user.roles:
@@ -137,7 +134,6 @@ class MC(commands.Cog):
             await i.response.send_message("⛔ У вас нет прав.",ephemeral=True); return False
         return True
 
-    # ---- Все команды (без изменений) ----
     @app_commands.command(name="ban")
     @app_commands.default_permissions(manage_messages=True)
     @app_commands.describe(member="Пользователь",reason="Причина",delete_days="Удалить за N дней (0-7)")
@@ -239,19 +235,6 @@ class MC(commands.Cog):
             await member.timeout(None)
             await i.followup.send(f"✅ Мут снят с {member.mention}.",ephemeral=True)
             await la(i,"Снятие мута",target=member)
-        except Exception as e: await i.followup.send(f"❌ {e}",ephemeral=True); eL(e)
-
-    @app_commands.command(name="clear")
-    @app_commands.default_permissions(manage_messages=True)
-    @app_commands.describe(amount="1-100")
-    async def cl(self,i,amount:int=10):
-        if amount<1 or amount>100:
-            await i.response.send_message("❌",ephemeral=True); return
-        await i.response.defer(ephemeral=True)
-        try:
-            d=await i.channel.purge(limit=amount)
-            await i.followup.send(f"✅ Удалено {len(d)}.",ephemeral=True)
-            await la(i,"Очистка чата",extra=f"Удалено {len(d)}")
         except Exception as e: await i.followup.send(f"❌ {e}",ephemeral=True); eL(e)
 
     @app_commands.command(name="warn")
