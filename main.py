@@ -42,10 +42,10 @@ intents.message_content=True
 intents.members=True
 b=commands.Bot(command_prefix='!',intents=intents)
 
-# ---- Роли и права ----
-FULL_ACCESS_ROLES = [1529252048883810485, 1529253808666841302]
-LIMITED_ROLES = [1529253952850366616, 1529254103820275823]
-LIMITED_COMMANDS = ["tempmute","unmute","warn","clearwarns"]
+# ---- Роли и права (больше не используются, доступ только владельцу) ----
+FULL_ACCESS_ROLES = []      # пусто
+LIMITED_ROLES = []          # пусто
+LIMITED_COMMANDS = []
 
 # ---- Защита от спама наказаниями ----
 mod_actions = {}
@@ -73,19 +73,12 @@ async def check_mod_rate(i):
         mod_actions[uid].append(now)
         return True
 
+# ---- Доступ только владельцу ----
 def imo(i):
-    if i.user.id==O: return True
-    for rid in FULL_ACCESS_ROLES:
-        r=i.guild.get_role(rid)
-        if r and r in i.user.roles: return True
-    return False
+    return i.user.id == O
 
 def imo_limited(i):
-    if i.user.id==O: return True
-    for rid in FULL_ACCESS_ROLES+LIMITED_ROLES:
-        r=i.guild.get_role(rid)
-        if r and r in i.user.roles: return True
-    return False
+    return i.user.id == O
 
 def pd(ds):
     p=re.compile(r'(\d+)([dhms])')
@@ -128,16 +121,12 @@ class MC(commands.Cog):
     async def cog_check(self, i):
         if str(i.user.id) in lb():
             await i.response.send_message("⛔",ephemeral=True); return False
-        cmd_name = i.command.name if i.command else ""
-        if cmd_name in LIMITED_COMMANDS:
-            if not imo_limited(i):
-                await i.response.send_message("⛔ У вас нет прав.",ephemeral=True); return False
-        else:
-            if not imo(i):
-                await i.response.send_message("⛔ У вас нет прав.",ephemeral=True); return False
+        # Только владелец может использовать команды
+        if i.user.id != O:
+            await i.response.send_message("⛔ У вас нет прав.",ephemeral=True); return False
         return True
 
-    # ---- Команды с default_permissions(manage_messages=True) ----
+    # ---- Все команды (без изменений, но проверка теперь только на владельца) ----
     @app_commands.command(name="ban")
     @app_commands.default_permissions(manage_messages=True)
     @app_commands.describe(member="Пользователь",reason="Причина",delete_days="Удалить за N дней (0-7)")
