@@ -16,8 +16,7 @@ O=int(os.getenv('OWNER_ID',0))
 L=int(os.getenv('LOG_CHANNEL_ID',0))
 P=1529248455157874879
 G=1528337219612311633
-# ---- PORT ----
-PORT=int(os.getenv('PORT',8080))   # читаем порт из окружения, если нет – 8080
+PORT=int(os.getenv('PORT',8080))
 
 if not T or T.strip()=='':
     print("❌");sys.exit(1)
@@ -106,6 +105,7 @@ class MC(commands.Cog):
             await i.response.send_message("⛔",ephemeral=True); return False
         return True
 
+    # ---- sync ----
     @app_commands.command(name="sync")
     async def sc(self,i):
         if i.user.id!=O:
@@ -117,15 +117,18 @@ class MC(commands.Cog):
         except Exception as e:
             await i.followup.send(f"❌ {e}",ephemeral=True); eL(e)
 
+    # ---- set_mod_role (исправлен) ----
     @app_commands.command(name="set_mod_role")
     @app_commands.default_permissions(administrator=True)
     async def smr(self,i,r:discord.Role):
         if i.user.id!=O:
             await i.response.send_message("❌",ephemeral=True); return
+        await i.response.defer(ephemeral=True)   # <-- defer
         global M; M=r.id
-        await i.response.send_message(f"✅ {r.mention}",ephemeral=True)
+        await i.followup.send(f"✅ {r.mention}",ephemeral=True)
         await la(i,"Назначена роль модератора",extra=f"Роль: {r.name} (ID: {r.id})")
 
+    # ---- add_mod (исправлен) ----
     @app_commands.command(name="add_mod")
     @app_commands.default_permissions(administrator=True)
     async def am(self,i,m:discord.Member):
@@ -136,36 +139,40 @@ class MC(commands.Cog):
         r=i.guild.get_role(M)
         if not r:
             await i.response.send_message("❌",ephemeral=True); return
+        await i.response.defer(ephemeral=True)   # <-- defer
         try:
             await m.add_roles(r,reason=f"Выдана владельцем {i.user}")
-            await i.response.send_message(f"✅ {m.mention}",ephemeral=True)
+            await i.followup.send(f"✅ {m.mention}",ephemeral=True)
             await la(i,"Выдана роль модератора",target=m)
         except Exception as e:
-            await i.response.send_message(f"❌ {e}",ephemeral=True); eL(e)
+            await i.followup.send(f"❌ {e}",ephemeral=True); eL(e)
 
+    # ---- blacklist ----
     @app_commands.command(name="blacklist")
     async def bl(self,i,user:discord.User,action:str):
         if i.user.id!=O:
             await i.response.send_message("❌",ephemeral=True); return
+        await i.response.defer(ephemeral=True)   # <-- defer
         bl=lb()
         uid=str(user.id)
         if action.lower()=="add":
             if uid not in bl:
                 bl.append(uid); sb(bl)
-                await i.response.send_message(f"✅ {user.mention}",ephemeral=True)
+                await i.followup.send(f"✅ {user.mention}",ephemeral=True)
                 await la(i,"Добавлен в чёрный список",target=user)
             else:
-                await i.response.send_message(f"⚠️ {user.mention}",ephemeral=True)
+                await i.followup.send(f"⚠️ {user.mention}",ephemeral=True)
         elif action.lower()=="remove":
             if uid in bl:
                 bl.remove(uid); sb(bl)
-                await i.response.send_message(f"✅ {user.mention}",ephemeral=True)
+                await i.followup.send(f"✅ {user.mention}",ephemeral=True)
                 await la(i,"Удалён из чёрного списка",target=user)
             else:
-                await i.response.send_message(f"⚠️ {user.mention}",ephemeral=True)
+                await i.followup.send(f"⚠️ {user.mention}",ephemeral=True)
         else:
-            await i.response.send_message("❌ add или remove",ephemeral=True)
+            await i.followup.send("❌ add или remove",ephemeral=True)
 
+    # ---- ban ----
     @app_commands.command(name="ban")
     @app_commands.describe(member="Пользователь",reason="Причина",delete_days="Удалить сообщения за N дней (0-7)")
     async def bn(self,i,member:discord.Member,reason:str="Не указана",delete_days:int=0):
@@ -180,6 +187,7 @@ class MC(commands.Cog):
         except Exception as e:
             await i.followup.send(f"❌ {e}",ephemeral=True); eL(e)
 
+    # ---- tempban ----
     @app_commands.command(name="tempban")
     @app_commands.describe(member="Пользователь",duration="1d,2h,30m",reason="Причина")
     async def tb(self,i,member:discord.Member,duration:str,reason:str="Не указана"):
@@ -202,6 +210,7 @@ class MC(commands.Cog):
         except Exception as e:
             await i.followup.send(f"❌ {e}",ephemeral=True); eL(e)
 
+    # ---- kick ----
     @app_commands.command(name="kick")
     @app_commands.describe(member="Пользователь",reason="Причина")
     async def k(self,i,member:discord.Member,reason:str="Не указана"):
@@ -216,6 +225,7 @@ class MC(commands.Cog):
         except Exception as e:
             await i.followup.send(f"❌ {e}",ephemeral=True); eL(e)
 
+    # ---- mute ----
     @app_commands.command(name="mute")
     @app_commands.describe(member="Пользователь",duration="Минуты",reason="Причина")
     async def m(self,i,member:discord.Member,duration:int=60,reason:str="Не указана"):
@@ -232,6 +242,7 @@ class MC(commands.Cog):
         except Exception as e:
             await i.followup.send(f"❌ {e}",ephemeral=True); eL(e)
 
+    # ---- tempmute ----
     @app_commands.command(name="tempmute")
     @app_commands.describe(member="Пользователь",duration="1d,2h,30m",reason="Причина")
     async def tm(self,i,member:discord.Member,duration:str,reason:str="Не указана"):
@@ -251,6 +262,7 @@ class MC(commands.Cog):
         except Exception as e:
             await i.followup.send(f"❌ {e}",ephemeral=True); eL(e)
 
+    # ---- unmute ----
     @app_commands.command(name="unmute")
     @app_commands.describe(member="Пользователь")
     async def um(self,i,member:discord.Member):
@@ -264,6 +276,7 @@ class MC(commands.Cog):
         except Exception as e:
             await i.followup.send(f"❌ {e}",ephemeral=True); eL(e)
 
+    # ---- clear ----
     @app_commands.command(name="clear")
     @app_commands.describe(amount="1-100")
     async def cl(self,i,amount:int=10):
@@ -277,20 +290,23 @@ class MC(commands.Cog):
         except Exception as e:
             await i.followup.send(f"❌ {e}",ephemeral=True); eL(e)
 
+    # ---- warn ----
     @app_commands.command(name="warn")
     @app_commands.describe(member="Пользователь",reason="Причина")
     async def w(self,i,member:discord.Member,reason:str="Не указана"):
         if member.top_role>=i.user.top_role:
             await i.response.send_message("❌",ephemeral=True); return
+        await i.response.defer(ephemeral=True)   # <-- defer
         w=lw()
         uid=str(member.id)
         if uid not in w: w[uid]=[]
         w[uid].append({"moderator":str(i.user.id),"reason":reason,"timestamp":datetime.utcnow().isoformat()})
         sw(w)
-        await i.response.send_message(f"✅ {member.mention} ({len(w[uid])})",ephemeral=True)
+        await i.followup.send(f"✅ {member.mention} ({len(w[uid])})",ephemeral=True)
         await la(i,"Предупреждение",target=member,reason=reason)
         await spn("Предупреждение",member,i.user,reason)
 
+    # ---- warnings ----
     @app_commands.command(name="warnings")
     @app_commands.describe(member="Пользователь")
     async def ws(self,i,member:discord.Member):
@@ -298,27 +314,32 @@ class MC(commands.Cog):
         uid=str(member.id)
         if uid not in w or not w[uid]:
             await i.response.send_message(f"У {member.mention} нет",ephemeral=True); return
+        # defer не нужен, но добавим для единообразия (он быстрый, но безопаснее)
+        await i.response.defer(ephemeral=True)
         e=discord.Embed(title=f"Предупреждения {member.display_name}",color=discord.Color.orange())
         for n,wn in enumerate(w[uid],1):
             mod=i.guild.get_member(int(wn['moderator']))
             mn=mod.display_name if mod else wn['moderator']
             e.add_field(name=f"#{n}",value=f"Модератор: {mn}\nПричина: {wn['reason']}\nДата: {wn['timestamp']}",inline=False)
-        await i.response.send_message(embed=e,ephemeral=True)
+        await i.followup.send(embed=e,ephemeral=True)
 
+    # ---- clearwarns ----
     @app_commands.command(name="clearwarns")
     @app_commands.describe(member="Пользователь")
     async def cw(self,i,member:discord.Member):
         if member.top_role>=i.user.top_role:
             await i.response.send_message("❌",ephemeral=True); return
+        await i.response.defer(ephemeral=True)   # <-- defer
         w=lw()
         uid=str(member.id)
         if uid in w:
             del w[uid]; sw(w)
-            await i.response.send_message(f"✅ {member.mention}",ephemeral=True)
+            await i.followup.send(f"✅ {member.mention}",ephemeral=True)
             await la(i,"Очистка предупреждений",target=member)
         else:
-            await i.response.send_message(f"У {member.mention} нет",ephemeral=True)
+            await i.followup.send(f"У {member.mention} нет",ephemeral=True)
 
+    # ---- unban ----
     @app_commands.command(name="unban")
     @app_commands.describe(user_id="ID пользователя",reason="Причина")
     async def ub(self,i,user_id:str,reason:str="Не указана"):
@@ -343,7 +364,6 @@ async def webstart():
     site=web.TCPSite(runner, host='0.0.0.0', port=PORT)
     await site.start()
     print(f"🌐 Health check на порту {PORT}")
-    # бесконечное ожидание, чтобы сервер не завершался
     await asyncio.Event().wait()
 
 @b.event
