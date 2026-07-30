@@ -42,10 +42,12 @@ intents.message_content=True
 intents.members=True
 b=commands.Bot(command_prefix='!',intents=intents)
 
-# ---- Роли и права (больше не используются, доступ только владельцу) ----
-FULL_ACCESS_ROLES = []      # пусто
-LIMITED_ROLES = []          # пусто
-LIMITED_COMMANDS = []
+# ---- Роли с доступом ----
+ALLOWED_ROLES = [
+    1529251785678655589,
+    1529252048883810485,
+    1529253808666841302
+]
 
 # ---- Защита от спама наказаниями ----
 mod_actions = {}
@@ -73,12 +75,15 @@ async def check_mod_rate(i):
         mod_actions[uid].append(now)
         return True
 
-# ---- Доступ только владельцу ----
-def imo(i):
-    return i.user.id == O
-
-def imo_limited(i):
-    return i.user.id == O
+# ---- Проверка прав ----
+def has_allowed_role(i):
+    if i.user.id == O:
+        return True
+    for role_id in ALLOWED_ROLES:
+        role = i.guild.get_role(role_id)
+        if role and role in i.user.roles:
+            return True
+    return False
 
 def pd(ds):
     p=re.compile(r'(\d+)([dhms])')
@@ -121,12 +126,11 @@ class MC(commands.Cog):
     async def cog_check(self, i):
         if str(i.user.id) in lb():
             await i.response.send_message("⛔",ephemeral=True); return False
-        # Только владелец может использовать команды
-        if i.user.id != O:
+        if not has_allowed_role(i):
             await i.response.send_message("⛔ У вас нет прав.",ephemeral=True); return False
         return True
 
-    # ---- Все команды (без изменений, но проверка теперь только на владельца) ----
+    # ---- Все команды ----
     @app_commands.command(name="ban")
     @app_commands.default_permissions(manage_messages=True)
     @app_commands.describe(member="Пользователь",reason="Причина",delete_days="Удалить за N дней (0-7)")
