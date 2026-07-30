@@ -333,7 +333,8 @@ async def health(req):
     return web.Response(text="OK",status=200)
 async def webstart():
     app=web.Application()
-    app.router.add_get('/health',health)
+    app.router.add_get('/', health)   # <-- корневой путь для health check
+    app.router.add_get('/health', health)
     r=web.AppRunner(app); await r.setup()
     site=web.TCPSite(r,host='0.0.0.0',port=8080); await site.start()
     print("🌐 8080")
