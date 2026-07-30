@@ -6,7 +6,7 @@ from datetime import datetime,timedelta
 from dotenv import load_dotenv
 from aiohttp import web
 
-# ---- HIDE LOGS ----
+# ---- LOGS ----
 os.makedirs("logs",exist_ok=True)
 def eL(x): open("logs/errors.log","a",encoding="utf-8").write(f"[{datetime.utcnow().isoformat()}] {type(x).__name__}: {x}\n")
 load_dotenv()
@@ -16,6 +16,9 @@ O=int(os.getenv('OWNER_ID',0))
 L=int(os.getenv('LOG_CHANNEL_ID',0))
 P=1529248455157874879
 G=1528337219612311633
+# ---- PORT ----
+PORT=int(os.getenv('PORT',8080))   # читаем порт из окружения, если нет – 8080
+
 if not T or T.strip()=='':
     print("❌");sys.exit(1)
 if not all([T,O,L]): print("❌");sys.exit(1)
@@ -333,11 +336,14 @@ async def health(req):
     return web.Response(text="OK",status=200)
 async def webstart():
     app=web.Application()
-    app.router.add_get('/', health)   # <-- корневой путь для health check
+    app.router.add_get('/', health)
     app.router.add_get('/health', health)
-    r=web.AppRunner(app); await r.setup()
-    site=web.TCPSite(r,host='0.0.0.0',port=8080); await site.start()
-    print("🌐 8080")
+    runner=web.AppRunner(app)
+    await runner.setup()
+    site=web.TCPSite(runner, host='0.0.0.0', port=PORT)
+    await site.start()
+    print(f"🌐 Health check на порту {PORT}")
+    # бесконечное ожидание, чтобы сервер не завершался
     await asyncio.Event().wait()
 
 @b.event
@@ -346,9 +352,9 @@ async def on_ready():
     try:
         g=discord.Object(id=G)
         s=await b.tree.sync(guild=g)
-        print(f"🔄 {len(s)}")
+        print(f"🔄 Синхронизировано {len(s)} команд")
     except Exception as e:
-        print(f"⚠️ {e}")
+        print(f"⚠️ Ошибка синхронизации: {e}")
 
 async def main():
     await b.add_cog(MC(b))
