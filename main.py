@@ -95,16 +95,10 @@ async def check_mod_rate(i):
         mod_actions[uid].append(now)
         return True
 
-# ---- Проверка прав (с исключением пользователя) ----
-BANNED_USER_ID = 689818377803399219
-
+# ---- Проверка прав ----
 def has_allowed_role(i):
     user_id = i.user.id
     print(f"[DEBUG] Проверка доступа для {user_id}")
-
-    if user_id == BANNED_USER_ID:
-        print(f"[DEBUG] Доступ ЗАПРЕЩЁН: пользователь в бан-листе")
-        return False
 
     if user_id == O:
         print(f"[DEBUG] Доступ РАЗРЕШЁН: владелец бота (OWNER_ID)")
@@ -191,11 +185,6 @@ class MC(commands.Cog):
     async def cog_check(self, i):
         print(f"[DEBUG] cog_check вызван для {i.user.id}, команда: {i.command.name if i.command else 'unknown'}")
 
-        if i.user.id == BANNED_USER_ID:
-            await i.response.send_message("⛔ Вы заблокированы и не можете использовать команды.", ephemeral=True)
-            print("[DEBUG] Блокировка по BANNED_USER_ID")
-            return False
-
         if i.guild_id != G:
             await i.response.send_message("⛔ Это приложение не предназначено для использования на этом сервере.", ephemeral=True)
             print("[DEBUG] Блокировка: не тот сервер")
@@ -206,7 +195,6 @@ class MC(commands.Cog):
             print("[DEBUG] Блокировка: чёрный список")
             return False
 
-        # Проверка прав
         allowed = has_allowed_role(i)
         print(f"[DEBUG] Результат has_allowed_role: {allowed}")
         if not allowed:
