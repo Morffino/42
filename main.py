@@ -75,7 +75,7 @@ async def check_mod_rate(i):
         mod_actions[uid].append(now)
         return True
 
-# ---- Проверка прав (с исключением для пользователя 689818377803399219) ----
+# ---- Проверка прав (с исключением пользователя и проверкой сервера) ----
 BANNED_USER_ID = 689818377803399219
 
 def has_allowed_role(i):
@@ -83,6 +83,7 @@ def has_allowed_role(i):
         return False
     if i.user.id == O:
         return True
+    # Проверяем роли
     for role_id in ALLOWED_ROLES:
         role = i.guild.get_role(role_id)
         if role and role in i.user.roles:
@@ -128,10 +129,24 @@ class MC(commands.Cog):
     def __init__(self, b): self.b=b
 
     async def cog_check(self, i):
+        # ---- Проверка сервера (защита от использования на других серверах) ----
+        if i.guild_id != G:
+            await i.response.send_message(
+                "⛔ Это приложение не предназначено для использования на этом сервере.",
+                ephemeral=True
+            )
+            return False
+
+        # ---- Проверка blacklist ----
         if str(i.user.id) in lb():
-            await i.response.send_message("⛔",ephemeral=True); return False
+            await i.response.send_message("⛔", ephemeral=True)
+            return False
+
+        # ---- Проверка прав (роли или владелец) ----
         if not has_allowed_role(i):
-            await i.response.send_message("⛔ У вас нет прав.",ephemeral=True); return False
+            await i.response.send_message("⛔ У вас нет прав.", ephemeral=True)
+            return False
+
         return True
 
     @app_commands.command(name="ban")
