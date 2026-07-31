@@ -75,7 +75,7 @@ async def check_mod_rate(i):
         mod_actions[uid].append(now)
         return True
 
-# ---- Проверка прав (с исключением пользователя и проверкой сервера) ----
+# ---- Проверка прав (с исключением пользователя) ----
 BANNED_USER_ID = 689818377803399219
 
 def has_allowed_role(i):
@@ -83,7 +83,6 @@ def has_allowed_role(i):
         return False
     if i.user.id == O:
         return True
-    # Проверяем роли
     for role_id in ALLOWED_ROLES:
         role = i.guild.get_role(role_id)
         if role and role in i.user.roles:
@@ -129,6 +128,11 @@ class MC(commands.Cog):
     def __init__(self, b): self.b=b
 
     async def cog_check(self, i):
+        # ---- Жёсткая блокировка конкретного пользователя ----
+        if i.user.id == BANNED_USER_ID:
+            await i.response.send_message("⛔ Вы заблокированы и не можете использовать команды.", ephemeral=True)
+            return False
+
         # ---- Проверка сервера (защита от использования на других серверах) ----
         if i.guild_id != G:
             await i.response.send_message(
@@ -139,7 +143,7 @@ class MC(commands.Cog):
 
         # ---- Проверка blacklist ----
         if str(i.user.id) in lb():
-            await i.response.send_message("⛔", ephemeral=True)
+            await i.response.send_message("⛔ Вы в чёрном списке.", ephemeral=True)
             return False
 
         # ---- Проверка прав (роли или владелец) ----
